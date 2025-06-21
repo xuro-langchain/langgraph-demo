@@ -1,0 +1,16 @@
+{
+    "dockerfile_lines": [],
+    "graphs": {
+      "Chain: Simple": "./chains/simple_chain.py:graph",
+      "Chain: RAG": "./chains/rag_chain.py:graph",
+      "ReAct: Music": "./react/music_agent.py:graph",
+      "ReAct: Noisy": "./react/noisy_agent.py:graph",
+      "Agent: Supervisor": "./agents/supervisor.py:graph",
+      "Agent: Search": "./agents/search.py:graph"
+    },
+    "env": ".env",
+    "python_version": "3.11",
+    "dependencies": [
+      "."
+    ]
+  }
