@@ -17,7 +17,7 @@ class GraphState(TypedDict):
     output: str
 
 class InputState(TypedDict):
-    question: str
+    input: str
 
 from langchain_core.messages import HumanMessage
 

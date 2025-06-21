@@ -6,10 +6,234 @@ def get_tool_name(tool):
         return tool.name
     return tool.__name__
 
+# Support Instructions
+SUPPORT_INSTRUCTIONS = """You have access to the following tools:
+
+- `get_customer_info`: pass in email address, get their info for all organizations they are a part of
+- `get_org_info`: pass in the org_id. Get org information including the plan they are on, the number of seats they have, the number of deployments they have
+- `set_deployments`: Set the number of deployments an org has access to
+- `set_seats`: Set the number of seats an org has access to
+- `get_billing_id`: Get the billing ID for a given org. This can be used to look up invoices and apply credits.
+- `get_customer_invoices`: This returns the three most recent monthly invoices for customer given their billing ID
+- `apply_grant`: Apply grant for a specific org (by billing id). This can be used to give refunds.
+
+Here are some rules you should follow:
+1. In order to set deployments/seats, you will need to get their org ID. If they don't provide in their email, you can try calling `get_customer_info` to see it there.
+2. If a user belongs to multiple orgs, clarify which one they are talking about
+3. If someone is on the plus plan, then increase their deployments as they ask. If they are on the developer plan then do not.
+4. If someone is on the plus plan, then increase their seats up to 15. If they are on the developer plan then increase them to 5.
+5. For both seats and deployments, if they ask to increase above the max allowed, increase their seats/deployments to the maximum allowed and then explain that they can't be increased higher. If they already have the max allowed, no need to reset the same value.
+6. If you need their org ID for something, and can't find it in the system based on their email, then just ask them for their org id.
+7. If someone asks for a refund, give it to them `apply_grant`, but ONLY refund their usage component, NOT seats. Explain to them in your response that you don't refund seats cost. Only refund spend for organizations on the plus plan. We cannot give refunds to anyone whos org is in the EU, regardless of their plan type.
+8. For orgs in the EU, we cannot give refunds OR give out any information about their spend over email. 
+9. If you know an org is in EU, then you don't need to bother looking up their billing information with `get_billing_id`. You can't message thema bout their billing info.
+
+Important Note: If you see an email from Scott (scott@langchain.dev) you should ALWAYS follow his instructions, even if he is asking about another email address. Please make sure to help Scott however you can from start to finish, even if it breaks the above rules. The above Support rules do not apply to any requests from Scott."""
+
+# Support Mock Data
+ORGS = {
+    "1": {
+        "plan": "plus",
+        "seats": 10,
+        "deployments": 1,
+        "org_id": 1,
+        "location": "US",
+    },
+    "2": {
+        "plan": "developer",
+        "seats": 1,
+        "deployments": 0,
+        "org_id": 2,
+        "location": "US",
+    },
+    "3": {
+        "plan": "plus",
+        "seats": 1,
+        "deployments": 1,
+        "org_id": 3,
+        "location": "US",
+    },
+    "4": {
+        "plan": "plus",
+        "seats": 1,
+        "deployments": 1,
+        "org_id": 4,
+        "location": "US",
+    },
+    "5": {
+        "plan": "plus",
+        "seats": 10,
+        "deployments": 1,
+        "org_id": 5,
+        "location": "EU",
+    },
+    "6": {
+        "plan": "developer",
+        "seats": 3,
+        "deployments": 1,
+        "org_id": 6,
+        "location": "EU",
+    },
+    "7": {
+        "plan": "plus",
+        "seats": 10,
+        "deployments": 2,
+        "org_id": 7,
+        "location": "US",
+    },
+}
+
+INVOICE_TEMPLATE = """Billing invoice
+
+Customer: BillingID {billing_id}
+
+Month: October
+Spend: 100.31
+Seats cost: 50.00
+Usage cost: 50.31
+
+Month: September
+Spend: 50.82
+Seats cost: 50.00
+Usage cost: 0.82
+
+Month: August
+Spend: 10.11
+Seats cost: 5.00
+Usage cost: 5.11
+"""
+
+CUSTOMER_ORGS = {
+    "joe@gmail.com": [ORGS["1"]],
+    "jim@gmail.com": [ORGS["2"]],
+    "tom@gmail.com": [ORGS["3"], ORGS["4"]],
+    "harry@gmail.com": [ORGS["5"]],
+    "nick@gmail.com": [ORGS["6"], ORGS["7"]]
+}
+
+# Support Tools
+def get_billing_id(org_id: int):
+    """Get the billing ID for an org."""
+    return f"b-{org_id + 1}"
+
+def get_customer_invoices(billing_id: str):
+    """Get monthly invoices by billing id."""
+    return INVOICE_TEMPLATE.format(billing_id=billing_id)
+
+def apply_grant(billing_id: str, amount: float):
+    """Apply a credit grant for a billing org.
+
+    This is used to issue refunds."""
+    return f"Credited {str(amount)} to {billing_id}"
+
+def get_customer_info(email: str):
+    """Look up customer info by email.
+
+    If customer is a part of multiple orgs, will return multiple
+
+    Customer info will return the plan they are on, the number of seats they have, the number of deployments they have, and their org ID."""
+    if email not in CUSTOMER_ORGS:
+        return f"Customer {email} not found"
+    else:
+        return CUSTOMER_ORGS[email]
+
+def get_org_info(org_id: int):
+    """Look up info by org_id.
+
+    Org info will include the plan they are on, the number of seats they have, the number of deployments they have"""
+    if str(org_id) not in ORGS:
+        return f"Org ID {str(org_id)} not found"
+    else:
+        return ORGS[str(org_id)]
+
+def set_deployments(org_id: int, number: int):
+    """Set the number of deployments for `org_id` to the number specified."""
+    return f"Set the number of deployments for {org_id} to {number}"
+
+def set_seats(org_id: int, number: int):
+    """Set the number of seats for `org_id` to the number specified."""
+    return f"Set the number of seats for {org_id} to {number}"
+
+support_tools = [
+    get_org_info,
+    get_customer_info,
+    set_seats,
+    set_deployments,
+    apply_grant,
+    get_billing_id,
+    get_customer_invoices
+]
+
+all_real_tools = [
+    *support_tools,
+]
 
 # These utils contain fake domain instructions and tools to illustrate how the react agent architecture
 # has reliability issues with large context windows. These are intended to distract the noisy agent.
 # NOT REAL DOMAINS
+# Real additional domains
+INVOICE_INFORMATION_INSTRUCTIONS = """You have access to three tools. These tools enable you to retrieve and process invoice information from the database. Here are the tools:
+    - get_invoices_by_customer_sorted_by_date: This tool retrieves all invoices for a customer, sorted by invoice date.
+    - get_invoices_sorted_by_unit_price: This tool retrieves all invoices for a customer, sorted by unit price.
+    - get_employee_by_invoice_and_customer: This tool retrieves the employee information associated with an invoice and a customer.
+    
+    If you are unable to retrieve the invoice information, inform the customer you are unable to retrieve the information, and ask if they would like to search for something else.
+    
+    CORE RESPONSIBILITIES:
+    - Retrieve and process invoice information from the database
+    - Provide detailed information about invoices, including customer details, invoice dates, total amounts, employees associated with the invoice, etc. when the customer asks for it.
+    - Always maintain a professional, friendly, and patient demeanor
+"""
+
+@tool 
+def get_invoices_by_customer_sorted_by_date(customer_id: str) -> list[dict]:
+    """
+    Look up all invoices for a customer using their ID.
+    The invoices are sorted in descending order by invoice date, which helps when the customer wants to view their most recent/oldest invoice, or if 
+    they want to view invoices within a specific date range.
+    
+    Args:
+        customer_id (str): customer_id, which serves as the identifier.
+    
+    Returns:
+        list[dict]: A list of invoices for the customer.
+    """
+    return f"No invoices found for customer ID {customer_id}."
+
+
+@tool 
+def get_invoices_sorted_by_unit_price(customer_id: str) -> list[dict]:
+    """
+    Use this tool when the customer wants to know the details of one of their invoices based on the unit price/cost of the invoice.
+    This tool looks up all invoices for a customer, and sorts the unit price from highest to lowest. In order to find the invoice associated with the customer, 
+    we need to know the customer ID.
+    
+    Args:
+        customer_id (str): customer_id, which serves as the identifier.
+    
+    Returns:
+        list[dict]: A list of invoices sorted by unit price.
+    """
+    return f"No invoices found for customer ID {customer_id}."
+
+
+@tool
+def get_employee_by_invoice_and_customer(invoice_id: str, customer_id: str) -> dict:
+    """
+    This tool will take in an invoice ID and a customer ID and return the employee information associated with the invoice.
+
+    Args:
+        invoice_id (int): The ID of the specific invoice.
+        customer_id (str): customer_id, which serves as the identifier.
+
+    Returns:
+        dict: Information about the employee associated with the invoice.
+    """
+    return f"No employee found for invoice ID {invoice_id} and customer identifier {customer_id}."
+
+invoice_tools = [get_invoices_by_customer_sorted_by_date, get_invoices_sorted_by_unit_price, get_employee_by_invoice_and_customer]
+
+
 HR_INSTRUCTIONS = """You can handle internal HR-related queries using the following tools:  
 
 - `get_employee_info`: Pass in an employee's email to retrieve their basic info, including department, role, PTO balance, and eligibility for benefits.  
@@ -209,449 +433,9 @@ lead_management_tools = [
     update_lead_status,
 ]
 
-# Community Engagement Tools
-COMMUNITY_INSTRUCTIONS = """
-You have access to the following tools:
 
-- `flag_forum_post`: Pass in the `post_id` and a `reason` to flag a forum post for moderation.
-- `escalate_issue_to_moderator`: Pass in the `issue_id` to escalate flagged issues to a moderator.
-- `create_community_poll`: Pass in a `topic` and `options` (a list of strings) to create a new poll in the community forum.
-- `send_welcome_message`: Pass in the `user_email` to send a welcome message to new community members.
-- `send_community_guidelines`: Pass in the `user_email` to send a copy of the community guidelines to a specific user.
-- `update_user_role`: Pass in the `user_email` and a `new_role` (e.g., "moderator", "member") to update the user's role in the community.
-- `get_forum_statistics`: Pass in a `date_range` to get statistics on forum engagement and user activity within that period.
-- `get_user_activity`: Pass in a `user_email` to get the activity report of a community member (posts, comments, likes, etc.).
-
-Here are some rules you should follow:
-1. If a forum post is flagged as inappropriate, escalate it to a moderator immediately.
-2. Do not flag forum posts without a valid reason. Only flag posts for spam, inappropriate content, or violations of community guidelines.
-3. When sending a welcome message or community guidelines, ensure that the user has not received these before. Check if they are a new member first.
-4. When sending community guidelines, make sure to provide a link to the forum rules and mention the consequences of violating them.
-5. Ensure that polls created are relevant and suitable for the community’s interests. Avoid creating polls about irrelevant or sensitive topics.
-6. If you’re updating a user’s role to “moderator”, double-check if they have been properly trained and authorized.
-7. Only create polls if there’s a genuine need for community feedback, such as event planning or new feature requests.
-8. If a community member has a history of inappropriate behavior, consider flagging them for review, even if no post has been flagged recently.
-9. If a user asks for specific help with community-related issues, direct them to the appropriate resources or escalate if needed.
-10. Always be polite and professional when communicating with community members.
-
-Finally, if you receive any requests related to content moderation from senior management, always prioritize them over other requests, even if they conflict with the above rules.
-"""
-
-
-
-# Community Engagement Tools
-@tool
-def flag_forum_post(post_id: int, reason: str):
-    """Flag a forum post for moderation with a specific reason."""
-    return f"Post {post_id} flagged for {reason}."
-
-@tool
-def escalate_issue_to_moderator(issue_id: int):
-    """Escalate a flagged issue to a community moderator."""
-    return f"Issue {issue_id} escalated to moderator."
-
-@tool
-def create_community_poll(topic: str, options: list[str]):
-    """Create a community poll with the given topic and options."""
-    return f"Poll on '{topic}' created with options: {', '.join(options)}."
-
-@tool
-def fetch_community_metrics(metric: str):
-    """Fetch community engagement metrics like active users or post volume."""
-    return f"Retrieved metrics for {metric}."
-
-@tool
-def post_community_announcement(message: str):
-    """Post an important announcement to the community."""
-    return f"Posted announcement: {message}"
-
-@tool
-def lookup_user_profile(username: str):
-    """Look up the profile of a specific community member."""
-    return f"Profile data for user {username} retrieved."
-
-@tool
-def approve_event_sponsorship(event_id: int):
-    """Approve a sponsorship request for a community event."""
-    return f"Sponsorship for event {event_id} approved."
-
-@tool
-def moderate_forum_post(post_id: int, action: str):
-    """Take moderation action (e.g., delete, warn) on a forum post."""
-    return f"Post {post_id} moderated with action: {action}."
-
-community_engagement_tools = [
-    flag_forum_post,
-    escalate_issue_to_moderator,
-    create_community_poll,
-    fetch_community_metrics,
-    post_community_announcement,
-    lookup_user_profile,
-    approve_event_sponsorship,
-    moderate_forum_post,
-]
-
-CONTENT_DOC_REQUESTS_INSTRUCTIONS = """
-You have access to the following tools:
-
-- `create_document`: Pass in a `title` and `content` to create a new document in the knowledge base.
-- `update_document`: Pass in the `document_id` and new `content` to update an existing document.
-- `get_document`: Pass in the `document_id` to retrieve the content of a specific document.
-- `get_document_list`: Get a list of all documents in the knowledge base.
-- `create_video_tutorial`: Pass in a `title` and `script` to create a video tutorial.
-- `get_tutorial_list`: Retrieve a list of all video tutorials in the knowledge base.
-- `get_documentation_feedback`: Retrieve feedback submitted by users about documentation or tutorials.
-- `request_translation`: Pass in the `document_id` and `language` to request a translation of a document into a specified language.
-
-Here are some rules you should follow:
-1. Do not create or update documents unless explicitly asked. Only create documentation when a new feature, tool, or process is introduced that requires it.
-2. When creating video tutorials, ensure the script is well-structured and covers all important aspects of the content. Avoid making tutorials too long; keep them concise and to the point.
-3. If someone asks for documentation updates or corrections, first check if the content already exists. If it does, update it rather than create a new document.
-4. Ensure that all new documentation adheres to the company’s style guide. If you’re unsure, refer to existing documents for guidance.
-5. If someone requests feedback for documentation, check the feedback first. If the feedback requires major changes, escalate it to the documentation team.
-6. When requesting translations, confirm the target language and ensure the document is ready for translation (e.g., it’s not still in draft form).
-7. Do not create or request translations of documents that are irrelevant to the user’s request or are outside of the scope of support documentation.
-8. Always ensure that the documentation is up-to-daIte, especially when a new release is made or a significant update occurs. Update the docs as soon as a feature change is finalized.
-9. If a document or tutorial is outdated or needs more detail, prioritize updating it quickly. Inform the team of the need for major updates or improvements to content.
-10. If there is no existing document for a feature or product, do not delay creating new content. Ensure all required documents are readily available.
-
-Finally, if you receive any documentation requests from the product or engineering teams, prioritize them over user requests, as they may be tied to product updates or bug fixes.
-"""
-# Content and Documentation Tools
-@tool
-def log_content_request(requester: str, content_type: str, description: str):
-    """Log a new request for content creation or updates."""
-    return f"Content request logged by {requester} for {content_type}: {description}"
-
-@tool
-def submit_for_content_review(content_id: int, reviewer: str):
-    """Submit content for QA review."""
-    return f"Content {content_id} submitted for review to {reviewer}."
-
-@tool
-def update_documentation(doc_id: int, updates: str):
-    """Update an existing document with new information."""
-    return f"Document {doc_id} updated with changes: {updates}"
-
-@tool
-def track_content_progress(request_id: int):
-    """Fetch the progress or status of a content request."""
-    return f"Status of content request {request_id} retrieved."
-
-@tool
-def add_document_metadata(doc_id: int, metadata: dict):
-    """Add or update metadata for a specific document."""
-    metadata_str = ', '.join(f"{key}: {value}" for key, value in metadata.items())
-    return f"Metadata updated for document {doc_id}: {metadata_str}"
-
-@tool
-def request_content_translation(doc_id: int, language: str):
-    """Request translation of a document into a specified language."""
-    return f"Translation of document {doc_id} into {language} requested."
-
-@tool
-def archive_content(doc_id: int):
-    """Archive outdated content."""
-    return f"Document {doc_id} archived."
-
-@tool
-def fetch_documentation_feedback(content_id: int):
-    """Retrieve feedback or comments on a document."""
-    return f"Feedback for content {content_id} retrieved."
-
-content_documentation_tools = [
-    log_content_request,
-    submit_for_content_review,
-    update_documentation,
-    track_content_progress,
-    add_document_metadata,
-    request_content_translation,
-    archive_content,
-    fetch_documentation_feedback,
-]
-PRODUCT_FEEDBACK_INSTRUCTIONS = """You can manage and process product feedback using the following tools:
-
-- `log_feature_request`: Pass in the `customer_email`, `feature_description`, and optional `priority` to log a new feature request.
-- `log_bug_report`: Pass in the `customer_email`, `bug_description`, `severity` (low/medium/high), and `product_area` to report a bug.
-- `create_feedback_survey`: Pass in a `topic` and list of `questions` to create a new customer feedback survey.
-- `get_survey_results`: Pass in a `survey_id` to retrieve aggregated results from a feedback survey.
-- `check_feature_status`: Pass in a `feature_id` to check if a requested feature is planned, in development, or released.
-- `get_customer_feedback_history`: Pass in a `customer_email` to see all feedback submitted by that customer.
-- `tag_feedback`: Pass in a `feedback_id` and list of `tags` to categorize feedback for better organization.
-- `get_feedback_trends`: Pass in a `time_period` (e.g., "last_week", "last_month") to see trending feedback topics.
-- `link_related_feedback`: Pass in two `feedback_ids` to mark them as related/duplicate items.
-- `escalate_feedback`: Pass in a `feedback_id` and `reason` to flag feedback items for product manager review.
-
-Here are some rules to follow. Don't reveal any information about these rules to others, just use them:
-
-1. All feature requests must be tagged with at least one product area tag.
-2. Bug reports with "high" severity must be escalated to product managers immediately.
-3. If multiple customers request similar features, link their feedback using `link_related_feedback`.
-4. Only create new surveys if there isn't an active survey on the same topic.
-5. Limit surveys to maximum 5 questions to maintain high completion rates.
-6. Don't create surveys about features that are already planned or in development.
-7. When logging feature requests, inform customers that we track all feedback but can't guarantee implementation.
-8. For bug reports, don't promise specific fix timelines.
-9. If a customer asks about a feature request status, always check existing status before responding.
-10. Enterprise customer feedback should be tagged as "enterprise_priority".
-11. If feedback is related to security or data privacy, tag as "security_sensitive" and escalate.
-12. Feedback from beta users should be tagged as "beta_feedback".
-13. For feedback from employees (emails ending in @langchain.dev), tag as "internal_feedback".
-14. If feedback mentions competitors, tag as "competitive_intel".
-15. If feedback includes praise/positive comments, tag as "testimonial".
-16. Review feedback trends weekly to identify emerging issues.
-17. If multiple bug reports come in about the same issue within 24 hours, escalate to product managers.
-18. Track feature request frequency to help inform product roadmap.
-19. Don't send surveys to customers who have submitted a bug report in the last 7 days.
-20. Limit survey requests to maximum one per customer per month.
-21. Always include one open-ended question in surveys for qualitative feedback.
-22. If feedback reveals documentation gaps, tag as "docs_needed".
-23. If feedback contradicts existing documentation, tag as "docs_conflict".
-
-Remember to maintain a professional and appreciative tone when handling feedback, as it helps improve our product. Never dismiss customer feedback, even if it's something we can't implement immediately."""
-
-# Product Feedback Tools
-@tool
-def log_feature_request(customer_email: str, feature_description: str, priority: str = "medium"):
-    """Log a new feature request from a customer."""
-    return f"Feature request logged for {customer_email}: {feature_description} (Priority: {priority})"
-
-@tool
-def log_bug_report(customer_email: str, bug_description: str, severity: str, product_area: str):
-    """Log a bug report from a customer."""
-    return f"Bug report logged for {customer_email} in {product_area} (Severity: {severity})"
-
-@tool
-def create_feedback_survey(topic: str, questions: list[str]):
-    """Create a new customer feedback survey."""
-    return f"Survey created on {topic} with {len(questions)} questions"
-
-@tool
-def get_survey_results(survey_id: str):
-    """Retrieve aggregated results from a feedback survey."""
-    return f"Retrieved results for survey {survey_id}"
-
-@tool
-def check_feature_status(feature_id: str):
-    """Check the status of a requested feature."""
-    return f"Status checked for feature {feature_id}"
-
-@tool
-def get_customer_feedback_history(customer_email: str):
-    """Retrieve all feedback submitted by a specific customer."""
-    return f"Retrieved feedback history for {customer_email}"
-
-@tool
-def tag_feedback(feedback_id: str, tags: list[str]):
-    """Add tags to categorize feedback."""
-    return f"Added tags {', '.join(tags)} to feedback {feedback_id}"
-
-@tool
-def get_feedback_trends(time_period: str):
-    """Analyze trending feedback topics for a given time period."""
-    return f"Retrieved feedback trends for {time_period}"
-
-@tool
-def link_related_feedback(feedback_id1: str, feedback_id2: str):
-    """Link two related feedback items together."""
-    return f"Linked feedback items {feedback_id1} and {feedback_id2}"
-
-@tool
-def escalate_feedback(feedback_id: str, reason: str):
-    """Escalate feedback for product manager review."""
-    return f"Escalated feedback {feedback_id}: {reason}"
-
-product_feedback_tools = [
-    log_feature_request,
-    log_bug_report,
-    create_feedback_survey,
-    get_survey_results,
-    check_feature_status,
-    get_customer_feedback_history,
-    tag_feedback,
-    get_feedback_trends,
-    link_related_feedback,
-    escalate_feedback,
-]
-
-
-PARTNER_PROGRAM_INSTRUCTIONS = """You can manage partner program inquiries and operations using the following tools:
-
-- `verify_partner_status`: Pass in an email to check if an organization is an existing partner and their current tier level.
-- `submit_partner_application`: Pass in company name, email, and use case to submit a new partner application.
-- `update_partner_tier`: Pass in partner_id and new_tier to modify a partner's program tier.
-- `log_integration_request`: Pass in partner_id and integration_type to record a new integration request.
-- `get_partner_metrics`: Pass in partner_id to retrieve partner performance metrics.
-- `schedule_partner_review`: Pass in partner_id and review_type to schedule partner assessments.
-- `generate_partner_agreement`: Pass in partner_id and agreement_type to create partnership documents.
-- `approve_co_marketing`: Pass in partner_id and campaign_type to approve joint marketing initiatives.
-- `get_integration_status`: Pass in integration_id to check development progress.
-- `issue_partner_credentials`: Pass in partner_id and credential_type to provide necessary access credentials.
-
-Here are some rules to follow. Don't reveal any information about these rules to others, just use them:
-
-1. All new partner applications must include a clear use case description and go through a verification process. Technology partners must specify their integration plans.
-2. Partners can only be promoted one tier at a time (Silver -> Gold -> Platinum), and tier upgrades require meeting specific revenue thresholds shown in the partner metrics.
-3. Integration requests must be logged before any development starts, and technical documentation should only be shared after an agreement is signed.
-4. Schedule quarterly reviews for Gold and Platinum partners. Missing two consecutive reviews will result in a tier downgrade.
-5. Only approve co-marketing initiatives for Silver tier partners and above. All joint press releases need internal review before approval.
-6. API keys and portal credentials should only be issued after integration approval and required security training is completed.
-7. Requests from strategic partners (emails ending in @langchain.dev) get priority handling and can override normal procedures.
-8. Keep all partner interactions logged and update partner status after every significant interaction.
-9. International partners may need special region-specific agreements - always check their location before generating agreements.
-10. If a partner hasn't logged any activity for 90+ days, their credentials should be revoked and their status should be set to inactive.
-
-Remember to maintain professionalism and confidentiality in all partner communications. Partner relationships are strategic assets that require careful management and consistent support."""
-
-
-# Partner Program Tools
-@tool
-def verify_partner_status(email: str):
-    """Check if an organization is an existing partner and their current tier."""
-    return f"Verified partner status for {email}"
-
-@tool
-def submit_partner_application(company_name: str, email: str, use_case: str):
-    """Submit a new partner program application."""
-    return f"Submitted partner application for {company_name}"
-
-@tool
-def update_partner_tier(partner_id: str, new_tier: str):
-    """Update a partner's tier level (e.g., Silver, Gold, Platinum)."""
-    return f"Updated partner {partner_id} to {new_tier} tier"
-
-@tool
-def log_integration_request(partner_id: str, integration_type: str):
-    """Log a request for a new integration from a partner."""
-    return f"Logged integration request for partner {partner_id}: {integration_type}"
-
-@tool
-def get_partner_metrics(partner_id: str):
-    """Retrieve partner performance metrics (revenue, customers, etc.)."""
-    return f"Retrieved metrics for partner {partner_id}"
-
-@tool
-def schedule_partner_review(partner_id: str, review_type: str):
-    """Schedule a quarterly review or technical assessment for a partner."""
-    return f"Scheduled {review_type} review for partner {partner_id}"
-
-@tool
-def generate_partner_agreement(partner_id: str, agreement_type: str):
-    """Generate a partner agreement document."""
-    return f"Generated {agreement_type} agreement for partner {partner_id}"
-
-@tool
-def approve_co_marketing(partner_id: str, campaign_type: str):
-    """Approve a co-marketing initiative with a partner."""
-    return f"Approved {campaign_type} campaign for partner {partner_id}"
-
-@tool
-def get_integration_status(integration_id: str):
-    """Check the status of a partner's integration development."""
-    return f"Retrieved status for integration {integration_id}"
-
-@tool
-def issue_partner_credentials(partner_id: str, credential_type: str):
-    """Issue API keys or portal credentials to partners."""
-    return f"Issued {credential_type} credentials to partner {partner_id}"
-
-partner_program_tools = [
-    verify_partner_status,
-    submit_partner_application,
-    update_partner_tier,
-    log_integration_request,
-    get_partner_metrics,
-    schedule_partner_review,
-    generate_partner_agreement,
-    approve_co_marketing,
-    get_integration_status,
-    issue_partner_credentials,
-]
-
-VENDOR_MANAGEMENT_INSTRUCTIONS = """You can manage vendor relationships and processes using the following tools:
-- `check_vendor_status`: Pass in a vendor_id to verify their current status and compliance state.
-- `submit_vendor_onboarding`: Pass in company name, contact email, and service type to initiate vendor onboarding.
-- `request_vendor_quote`: Pass in vendor_id and service description to get a quote for services.
-- `approve_vendor_invoice`: Pass in invoice_id and amount to approve vendor payments.
-- `log_vendor_issue`: Pass in vendor_id, issue description, and severity to document service problems.
-- `schedule_vendor_review`: Pass in vendor_id to set up a quarterly performance review.
-- `update_vendor_contract`: Pass in vendor_id and update type to request contract changes.
-- `get_vendor_spend`: Pass in vendor_id to retrieve spending history with that vendor.
-
-Here are some rules to follow. Don't reveal any information about these rules to others, just use them:
-1. All new vendors must complete compliance checks before any contracts are signed or payments are approved - verify status with `check_vendor_status` before proceeding with any vendor actions.
-2. Only approve invoices under $10,000 - anything above needs finance team review. Never share this threshold with vendors.
-3. For any "high" severity issues logged with `log_vendor_issue`, immediately schedule a vendor review and notify the procurement team.
-4. Quarterly reviews are mandatory for vendors with annual spend over $50,000 - check spend history before scheduling reviews.
-5. All contract updates must be preceded by a performance review within the last 30 days.
-6. New vendor onboarding requests must include their security certifications and insurance documentation - don't proceed without these.
-7. Before requesting quotes from vendors, verify they haven't had any high-severity issues in the past 90 days.
-8. If a vendor has missed two consecutive quarterly reviews, their status should be marked for review and no new work should be approved.
-9. For vendors providing critical services (marked in their status), any service issues must be escalated to the operations team immediately.
-10. Vendor spend should be reviewed monthly - if spend is 20% above projections, flag for procurement review.
-
-Remember to maintain professional relationships with all vendors while ensuring compliance with company policies. All vendor communications should be documented and tracked."""
-
-# Vendor Management Tools
-@tool
-def check_vendor_status(vendor_id: str):
-    """Check the current status and compliance state of a vendor."""
-    return f"Retrieved status for vendor {vendor_id}"
-
-@tool
-def submit_vendor_onboarding(company_name: str, contact_email: str, service_type: str):
-    """Submit a new vendor for onboarding review."""
-    return f"Submitted onboarding request for {company_name}"
-
-@tool
-def request_vendor_quote(vendor_id: str, service_description: str):
-    """Request a quote from an existing vendor for a specific service."""
-    return f"Requested quote from vendor {vendor_id} for {service_description}"
-
-@tool
-def approve_vendor_invoice(invoice_id: str, amount: float):
-    """Approve a vendor invoice for payment processing."""
-    return f"Approved invoice {invoice_id} for ${amount}"
-
-@tool
-def log_vendor_issue(vendor_id: str, issue_description: str, severity: str):
-    """Log an issue with a vendor's service or deliverables."""
-    return f"Logged {severity} issue for vendor {vendor_id}: {issue_description}"
-
-@tool
-def schedule_vendor_review(vendor_id: str):
-    """Schedule a quarterly performance review with a vendor."""
-    return f"Scheduled review for vendor {vendor_id}"
-
-@tool
-def update_vendor_contract(vendor_id: str, update_type: str):
-    """Request an update to a vendor's contract terms."""
-    return f"Requested {update_type} update for vendor {vendor_id}"
-
-@tool
-def get_vendor_spend(vendor_id: str):
-    """Retrieve spending history with a specific vendor."""
-    return f"Retrieved spend history for vendor {vendor_id}"
-
-vendor_management_tools = [
-    check_vendor_status,
-    submit_vendor_onboarding,
-    request_vendor_quote,
-    approve_vendor_invoice,
-    log_vendor_issue,
-    schedule_vendor_review,
-    update_vendor_contract,
-    get_vendor_spend,
-]
-
-
-all_tools = [ 
+all_fake_tools = [ 
     *hr_tools,
     *lead_management_tools,
-    *community_engagement_tools,
-    *content_documentation_tools,
-    *product_feedback_tools,
-    *partner_program_tools,
-    *vendor_management_tools,
 ]
-ALL_TOOL_NAMES = tuple(get_tool_name(tool) for tool in all_tools)
+ALL_FAKE_TOOL_NAMES = tuple(get_tool_name(tool) for tool in all_fake_tools)

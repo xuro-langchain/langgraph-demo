@@ -1,13 +1,11 @@
 from utils import llm, get_engine_for_chinook_db
 from react.utils import (
-    all_tools, 
+    all_real_tools, 
+    all_fake_tools,
+    INVOICE_INFORMATION_INSTRUCTIONS,
+    SUPPORT_INSTRUCTIONS,
     HR_INSTRUCTIONS, 
-    LEAD_MANAGEMENT_INSTRUCTIONS, 
-    COMMUNITY_INSTRUCTIONS,
-    CONTENT_DOC_REQUESTS_INSTRUCTIONS, 
-    PRODUCT_FEEDBACK_INSTRUCTIONS, 
-    PARTNER_PROGRAM_INSTRUCTIONS, 
-    VENDOR_MANAGEMENT_INSTRUCTIONS
+    LEAD_MANAGEMENT_INSTRUCTIONS
 )
 from langchain_community.utilities.sql_database import SQLDatabase
 from typing_extensions import TypedDict
@@ -104,8 +102,8 @@ def check_for_songs(song_title):
 from langgraph.prebuilt import ToolNode
 
 music_tools = [get_albums_by_artist, get_tracks_by_artist, get_songs_by_genre, check_for_songs]
-tool_node = ToolNode(music_tools + all_tools) # Node
-llm_with_tools = llm.bind_tools(music_tools + all_tools)
+tool_node = ToolNode(music_tools + all_real_tools + all_fake_tools) # Node
+llm_with_tools = llm.bind_tools(music_tools + all_real_tools + all_fake_tools)
 
 from langchain_core.messages import ToolMessage, SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -138,15 +136,6 @@ def assistant(state: State, config: RunnableConfig):
     ## Lead Management Instructions
     {LEAD_MANAGEMENT_INSTRUCTIONS}
 
-    ## Community Engagement Instructions
-    {COMMUNITY_INSTRUCTIONS}
-
-    ## Content Documentation Instructions
-    {CONTENT_DOC_REQUESTS_INSTRUCTIONS}
-
-    ## Product Feedback Instructions
-    {PRODUCT_FEEDBACK_INSTRUCTIONS}
-
     ## Music Catalog Recommendations Instructions
     CORE RESPONSIBILITIES:
     - Search and provide accurate information about songs, albums, artists, and playlists
@@ -168,11 +157,11 @@ def assistant(state: State, config: RunnableConfig):
        - Note if it's part of any playlists
        - Indicate if there are multiple versions
     
-    ## Partner Program Instructions
-    {PARTNER_PROGRAM_INSTRUCTIONS}
+    ## Support Instructions
+    {SUPPORT_INSTRUCTIONS}
 
-    ## Vendor Management Instructions
-    {VENDOR_MANAGEMENT_INSTRUCTIONS}
+    ## Invoice Information Instructions
+    {INVOICE_INFORMATION_INSTRUCTIONS}
     
     Additional context is provided below: 
 
