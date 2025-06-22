@@ -1,4 +1,6 @@
 import ast
+from typing_extensions import TypedDict
+from typing import Annotated, Optional, List
 
 from agents.utils import invoice_graph as invoice_agent
 from react.music_agent import graph as music_agent
@@ -6,10 +8,10 @@ from utils import llm, get_engine_for_chinook_db
 
 from langchain_community.utilities.sql_database import SQLDatabase
 from langgraph.graph import StateGraph, START, END
-from typing import Annotated, Optional
+
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.managed.is_last_step import RemainingSteps
-from typing_extensions import TypedDict
+
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 
@@ -48,6 +50,10 @@ supervisor_prebuilt_workflow = create_supervisor(
     prompt=(supervisor_prompt), 
     state_schema=State
 )
+
+# ------------------------------------------------------------
+# Adding HITL to the Supervisor
+# ------------------------------------------------------------
 
 from pydantic import BaseModel, Field
 
@@ -112,23 +118,22 @@ def verify_info(state: State, config: RunnableConfig):
         # Extract details
         identifier = parsed_info.identifier
     
-        customer_id = ""
+        customer_id = None
         # Attempt to find the customer ID
         if (identifier):
             customer_id = get_customer_id_from_identifier(identifier)
     
-        if customer_id != "":
+        if customer_id is not None:
             intent_message = SystemMessage(
                 content= f"Thank you for providing your information! I was able to verify your account with customer id {customer_id}."
             )
             return {
-                  "customer_id": customer_id,
-                  "messages" : [intent_message]
-                  }
+                "customer_id": str(customer_id),  # Convert to string for state
+                "messages" : [intent_message]
+            }
         else:
           response = llm.invoke([SystemMessage(content=system_instructions)]+state['messages'])
           return {"messages": [response]}
-
     else: 
         pass
 
@@ -149,21 +154,120 @@ def should_interrupt(state: State, config: RunnableConfig):
 
 supervisor_prebuilt = supervisor_prebuilt_workflow.compile(name="music_catalog_subagent")
 
-# Add nodes 
-multi_agent_verify = StateGraph(State)
-multi_agent_verify.add_node("verify_info", verify_info)
-multi_agent_verify.add_node("human_input", human_input)
-multi_agent_verify.add_node("supervisor", supervisor_prebuilt)
+# ------------------------------------------------------------
+# Adding Memory to the Supervisor
+# ------------------------------------------------------------
+from langgraph.store.base import BaseStore
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.store.memory import InMemoryStore
 
-multi_agent_verify.add_edge(START, "verify_info")
-multi_agent_verify.add_conditional_edges(
+# Initializing long term memory store 
+in_memory_store = InMemoryStore()
+
+# Initializing checkpoint for thread-level memory 
+checkpointer = MemorySaver()
+
+# helper function to structure memory 
+def format_user_memory(user_data):
+    """Formats music preferences from users, if available."""
+    profile = user_data['memory']
+    result = ""
+    if hasattr(profile, 'music_preferences') and profile.music_preferences:
+        result += f"Music Preferences: {', '.join(profile.music_preferences)}"
+    return result.strip()
+
+# Node
+def load_memory(state: State, config: RunnableConfig, store: BaseStore):
+    """Loads music preferences from users, if available."""
+    
+    user_id = state["customer_id"]
+    namespace = ("memory_profile", user_id)
+    existing_memory = store.get(namespace, "user_memory")
+    formatted_memory = ""
+    if existing_memory and existing_memory.value:
+        formatted_memory = format_user_memory(existing_memory.value)
+
+    return {"loaded_memory" : formatted_memory}
+
+# User profile structure for creating memory
+
+class UserProfile(BaseModel):
+    customer_id: str = Field(
+        description="The customer ID of the customer"
+    )
+    music_preferences: List[str] = Field(
+        description="The music preferences of the customer"
+    )
+
+
+create_memory_prompt = """You are an expert analyst that is observing a conversation that has taken place between a customer and a customer support assistant. The customer support assistant works for a digital music store, and has utilized a multi-agent team to answer the customer's request. 
+You are tasked with analyzing the conversation that has taken place between the customer and the customer support assistant, and updating the memory profile associated with the customer. The memory profile may be empty. If it's empty, you should create a new memory profile for the customer.
+
+You specifically care about saving any music interest the customer has shared about themselves, particularly their music preferences to their memory profile.
+
+To help you with this task, I have attached the conversation that has taken place between the customer and the customer support assistant below, as well as the existing memory profile associated with the customer that you should either update or create. 
+
+The customer's memory profile should have the following fields:
+- customer_id: the customer ID of the customer
+- music_preferences: the music preferences of the customer
+
+These are the fields you should keep track of and update in the memory profile. If there has been no new information shared by the customer, you should not update the memory profile. It is completely okay if you do not have new information to update the memory profile with. In that case, just leave the values as they are.
+
+*IMPORTANT INFORMATION BELOW*
+
+The conversation between the customer and the customer support assistant that you should analyze is as follows:
+{conversation}
+
+The existing memory profile associated with the customer that you should either update or create based on the conversation is as follows:
+{memory_profile}
+
+Ensure your response is an object that has the following fields:
+- customer_id: the customer ID of the customer
+- music_preferences: the music preferences of the customer
+
+For each key in the object, if there is no new information, do not update the value, just keep the value that is already there. If there is new information, update the value. 
+
+Take a deep breath and think carefully before responding.
+"""
+
+# Node
+def create_memory(state: State, config: RunnableConfig, store: BaseStore):
+    user_id = str(state["customer_id"])
+    namespace = ("memory_profile", user_id)
+    existing_memory = store.get(namespace, "user_memory")
+    if existing_memory and existing_memory.value:
+        existing_memory_dict = existing_memory.value
+        formatted_memory = (
+            f"Music Preferences: {', '.join(existing_memory_dict.get('music_preferences', []))}"
+        )
+    else:
+        formatted_memory = ""
+    formatted_system_message = SystemMessage(content=create_memory_prompt.format(conversation=state["messages"], memory_profile=formatted_memory))
+    updated_memory = llm.with_structured_output(UserProfile).invoke([formatted_system_message])
+    key = "user_memory"
+    store.put(namespace, key, {"memory": updated_memory})
+
+
+# Add nodes 
+multi_agent = StateGraph(State)
+multi_agent.add_node("verify_info", verify_info)
+multi_agent.add_node("human_input", human_input)
+multi_agent.add_node("load_memory", load_memory)
+multi_agent.add_node("multiagent", supervisor_prebuilt)
+multi_agent.add_node("create_memory", create_memory)
+
+multi_agent.add_edge(START, "verify_info")
+multi_agent.add_conditional_edges(
     "verify_info",
     should_interrupt,
     {
-        "continue": "supervisor",
+        "continue": "load_memory",
         "interrupt": "human_input",
     },
 )
-multi_agent_verify.add_edge("human_input", "verify_info")
-multi_agent_verify.add_edge("supervisor", END)
-graph = multi_agent_verify.compile(name="multi_agent_verify")
+multi_agent.add_edge("human_input", "verify_info")
+multi_agent.add_edge("load_memory", "multiagent")
+multi_agent.add_edge("multiagent", "create_memory")
+multi_agent.add_edge("create_memory", END)
+# graph = multi_agent.compile(name="multiagent", checkpointer=checkpointer, store=in_memory_store)
+graph = multi_agent.compile(name="assistant")
