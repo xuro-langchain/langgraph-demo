@@ -59,12 +59,12 @@ Answer:"""
 
 def generate_response(state: GraphState):
     # We interrupt the graph, and ask the user for some additional context
-    additional_context = interrupt("Do you have anything else to add that you think is relevant?")
+    # additional_context = interrupt("Do you have anything else to add that you think is relevant?")
     print("---GENERATE RESPONSE---")
     question = state["question"]
     documents = state["documents"]
     # For simplicity, we'll just append the additional context to the conversation history
-    conversation = get_buffer_string(state["messages"]) + additional_context
+    conversation = get_buffer_string(state["messages"]) # + additional_context
     attempted_generations = state.get("attempted_generations", 0)
     formatted_docs = "\n\n".join(doc.page_content for doc in documents)
     
